@@ -140,7 +140,7 @@ public class IAService {
         
         Query query = FirebaseDatabase.getInstance() // La clase query nos permite filtrar la ref antes de hacer nada con ella
                 .getReference("apuntes")
-                .orderByChild("usuarioId") // Ordena la referencia por id del usuario
+                .orderByChild("userId") // Ordena la referencia por id del usuario
                 .equalTo(uid);
 
         query.addListenerForSingleValueEvent(new ValueEventListener() {

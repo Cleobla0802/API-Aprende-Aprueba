@@ -1,10 +1,10 @@
-# 1. Usamos una imagen de Java 21 (o la que uses) para compilar
-FROM maven:3.8.5-openjdk-21 AS build
+# 1. Usamos una imagen de Maven con Java 21 para compilar
+FROM maven:3.9.6-eclipse-temurin-21 AS build
 COPY . .
 RUN mvn clean package -DskipTests
 
-# 2. Usamos una imagen más ligera para ejecutar
-FROM openjdk:21-jdk-slim
+# 2. Usamos la imagen oficial de Eclipse Temurin para ejecutar
+FROM eclipse-temurin:21-jdk
 COPY --from=build /target/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

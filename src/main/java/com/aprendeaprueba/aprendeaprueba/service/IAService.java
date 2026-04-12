@@ -213,12 +213,18 @@ public class IAService {
         }
     }
 
-    // Método para guardar el resumen en Firebase
+	 // Cambia esto en tu IAService.java
     public void guardarResumenFirebase(Resumen resumen) {
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("resumenes");
+        // Referencia al nodo resumenes/ID_USUARIO
+        DatabaseReference ref = FirebaseDatabase.getInstance()
+            .getReference("resumenes")
+            .child(resumen.getUserId());
+
         String id = ref.push().getKey();
         resumen.setId(id);
         resumen.setFecha(LocalDateTime.now().toString());
+        
+        // Ahora se guarda en: resumenes/USER_ID/RESUMEN_ID
         ref.child(id).setValueAsync(resumen);
     }
 }

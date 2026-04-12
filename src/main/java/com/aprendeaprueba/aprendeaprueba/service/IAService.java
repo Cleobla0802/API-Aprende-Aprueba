@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import com.aprendeaprueba.aprendeaprueba.model.Apunte;
+import com.aprendeaprueba.aprendeaprueba.model.Resumen;
 import com.google.api.core.ApiFuture;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -180,5 +181,44 @@ public class IAService {
         } catch (InterruptedException | ExecutionException e) {
             System.err.println("Error al eliminar: " + e.getMessage());
         }
+    }
+    
+    /**
+     * 2. Método para generar un resumen de texto usando la IA
+     */
+    public String generarResumenTexto(String textoApuntes) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + apiKey);
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("model", modeloIA);
+
+            List<Map<String, String>> messages = new ArrayList<>();
+            messages.add(Map.of("role", "user", "content", 
+                "Eres un experto en educación. Resume el siguiente contenido de forma clara, " +
+                "estructurada con puntos clave y fácil de estudiar: \n\n" + textoApuntes));
+
+            body.put("messages", messages);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
+
+            JsonNode root = objectMapper.readTree(responseStr);
+            return root.path("choices").get(0).path("message").path("content").asText();
+
+        } catch (Exception e) {
+            return "Error al generar resumen: " + e.getMessage();
+        }
+    }
+
+    // Método para guardar el resumen en Firebase
+    public void guardarResumenFirebase(Resumen resumen) {
+        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("resumenes");
+        String id = ref.push().getKey();
+        resumen.setId(id);
+        resumen.setFecha(LocalDateTime.now().toString());
+        ref.child(id).setValueAsync(resumen);
     }
 }

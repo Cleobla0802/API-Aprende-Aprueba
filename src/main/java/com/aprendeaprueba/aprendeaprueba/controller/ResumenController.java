@@ -14,7 +14,6 @@ import com.aprendeaprueba.aprendeaprueba.service.IAService;
 
 @RestController
 @RequestMapping("/api/resumenes")
-@CrossOrigin(origins = "*") // Importante para conectar con Angular
 public class ResumenController {
 
 	@Autowired

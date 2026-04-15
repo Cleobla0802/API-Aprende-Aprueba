@@ -1,4 +1,4 @@
-package com.aprendeaprueba.aprendeaprueba;
+package com.aprendeaprueba.aprendeaprueba.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,12 +12,13 @@ public class CorsConfig {
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
             @Override
-            public void addCorsMappings(CorsRegistry registry) { // <-- El método correcto es addCorsMappings
+            public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins("http://localhost:4200") // Tu origen de desarrollo
+                        .allowedOrigins("http://localhost:4200") // El origen de tu Angular
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
-                        .allowCredentials(true);
+                        .allowCredentials(true)
+                        .maxAge(3600); 
             }
         };
     }

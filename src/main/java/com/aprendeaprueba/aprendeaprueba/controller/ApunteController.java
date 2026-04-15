@@ -13,7 +13,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/apuntes")
-@CrossOrigin(origins = "*") // Esto permite que Angular o Android se conecten sin bloqueos
 public class ApunteController {
 
 	@Autowired

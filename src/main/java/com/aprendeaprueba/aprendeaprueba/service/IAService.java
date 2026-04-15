@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import com.aprendeaprueba.aprendeaprueba.model.Apunte;
+import com.aprendeaprueba.aprendeaprueba.model.Pregunta;
 import com.aprendeaprueba.aprendeaprueba.model.Resumen;
+import com.aprendeaprueba.aprendeaprueba.model.Test;
 import com.google.api.core.ApiFuture;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -213,7 +215,7 @@ public class IAService {
         }
     }
 
-	 // Cambia esto en tu IAService.java
+
     public void guardarResumenFirebase(Resumen resumen) {
         // Referencia al nodo resumenes/ID_USUARIO
         DatabaseReference ref = FirebaseDatabase.getInstance()
@@ -226,5 +228,49 @@ public class IAService {
         
         // Ahora se guarda en: resumenes/USER_ID/RESUMEN_ID
         ref.child(id).setValueAsync(resumen);
+    }
+
+    /**
+     * Genera una lista de preguntas tipo test a partir de un texto.
+     */
+    public List<Pregunta> generarPreguntasIA(String contenido) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + apiKey);
+
+            String prompt = "Actúa como un profesor experto. Basándote SOLAMENTE en el siguiente texto, genera 5 preguntas de opción múltiple. " +
+                            "Devuelve ÚNICAMENTE un array JSON con este formato exacto: " +
+                            "[{\"enunciado\": \"...\", \"opciones\": [\"A\", \"B\", \"C\"], \"respuestaCorrecta\": 0}]. " +
+                            "No escribas introducciones ni explicaciones, solo el JSON.\n\nContenido: " + contenido;
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("model", modeloIA);
+            body.put("messages", List.of(Map.of("role", "user", "content", prompt)));
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
+
+            JsonNode root = objectMapper.readTree(responseStr);
+            String jsonPreguntas = root.path("choices").get(0).path("message").path("content").asText();
+            
+            // Limpiamos el posible markdown (```json ... ```) si la IA lo incluye
+            jsonPreguntas = jsonPreguntas.replaceAll("```json", "").replaceAll("```", "").trim();
+
+            return objectMapper.readValue(jsonPreguntas, 
+                   objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class));
+
+        } catch (Exception e) {
+            System.err.println("Error generando test: " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public void guardarTestFirebase(Test test) {
+        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("tests");
+        String id = ref.push().getKey();
+        test.setId(id);
+        test.setFecha(LocalDateTime.now().toString());
+        ref.child(id).setValueAsync(test);
     }
 }

@@ -1,4 +1,4 @@
-package com.aprendeaprueba.aprendeaprueba.config;
+package com.aprendeaprueba.aprendeaprueba;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,11 +14,14 @@ public class CorsConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins("http://localhost:4200") // El origen de tu Angular
+                        .allowedOrigins(
+                            "http://localhost:4200", 
+                            "https://aprendeapruebaangular.onrender.com"
+                        ) 
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
                         .allowCredentials(true)
-                        .maxAge(3600); 
+                        .maxAge(3600);
             }
         };
     }

@@ -239,10 +239,12 @@ public class IAService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("Authorization", "Bearer " + apiKey);
 
-            String prompt = "Actúa como un profesor experto. Basándote SOLAMENTE en el siguiente texto, genera 5 preguntas de opción múltiple. " +
-                            "Devuelve ÚNICAMENTE un array JSON con este formato exacto: " +
-                            "[{\"enunciado\": \"...\", \"opciones\": [\"A\", \"B\", \"C\"], \"respuestaCorrecta\": 0}]. " +
-                            "No escribas introducciones ni explicaciones, solo el JSON.\n\nContenido: " + contenido;
+            String prompt = "Actúa como un profesor experto. Basándote SOLAMENTE en el contenido proporcionado, genera 5 preguntas de opción múltiple. " +
+                    "Cada pregunta debe tener 3 opciones de respuesta con contenido REAL extraído del texto (no uses letras como A, B o C). " +
+                    "Devuelve ÚNICAMENTE un array JSON con este formato exacto: " +
+                    "[{\"enunciado\": \"¿Texto de la pregunta?\", \"opciones\": [\"Respuesta real 1\", \"Respuesta real 2\", \"Respuesta real 3\"], \"respuestaCorrecta\": 0}]. " +
+                    "Donde 'respuestaCorrecta' es el índice (0, 1 o 2) de la opción válida. " +
+                    "No escribas introducciones ni explicaciones, solo el JSON.\n\nContenido: " + contenido;
 
             Map<String, Object> body = new HashMap<>();
             body.put("model", modeloIA);

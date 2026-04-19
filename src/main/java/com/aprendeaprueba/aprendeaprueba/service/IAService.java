@@ -268,11 +268,19 @@ public class IAService {
         }
     }
 
-    public void guardarTestFirebase(Test test) {
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("tests");
-        String id = ref.push().getKey();
-        test.setId(id);
-        test.setFecha(LocalDateTime.now().toString());
-        ref.child(id).setValueAsync(test);
-    }
+	public void guardarTestFirebase(Test test) {
+	    try {
+	        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("tests");
+	        String id = ref.push().getKey();
+	        test.setId(id);
+	        test.setFecha(LocalDateTime.now().toString());
+	        
+	        // .get() fuerza a que el hilo espere hasta que Firebase confirme la escritura
+	        ref.child(id).setValueAsync(test).get(); 
+	        
+	        System.out.println("Test guardado y confirmado en Firebase: " + id);
+	    } catch (Exception e) {
+	        System.err.println("Error al sincronizar con Firebase: " + e.getMessage());
+	    }
+	}
 }

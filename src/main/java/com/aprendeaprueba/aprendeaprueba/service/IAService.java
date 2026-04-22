@@ -5,8 +5,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -17,14 +15,8 @@ import org.springframework.web.client.RestTemplate;
 
 import com.aprendeaprueba.aprendeaprueba.model.Apunte;
 import com.aprendeaprueba.aprendeaprueba.model.Pregunta;
-import com.aprendeaprueba.aprendeaprueba.model.Resumen;
-import com.aprendeaprueba.aprendeaprueba.model.Test;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.Query;
-import com.google.firebase.database.ValueEventListener;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -44,37 +36,26 @@ public class IAService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * 1. Digitalizar Imagen (Formato Multimodal OpenAI)
+     * Procesa la imagen con la IA de NVIDIA/OpenAI
      */
     public String digitalizar(String urlImagen) {
-    	if (apiKey == null || apiKey.isEmpty()) {
-            return "Error: La API Key no se ha cargado correctamente desde las variables de entorno";
-        }
-        // Log para depurar (solo los primeros caracteres por seguridad)
-        System.out.println("Usando API Key: " + apiKey.substring(0, 8) + "...");
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey); // Reemplaza "Authorization: Bearer" manual por este método más limpio
+            headers.setBearerAuth(apiKey);
+            headers.set("Accept", "application/json");
 
             Map<String, Object> body = new HashMap<>();
             body.put("model", modeloIA);
+            body.put("max_tokens", 1024);
 
-            // Mensaje Multimodal
             List<Map<String, Object>> messages = new ArrayList<>();
             Map<String, Object> message = new HashMap<>();
             message.put("role", "user");
 
             List<Map<String, Object>> contents = new ArrayList<>();
-
-            // Texto descriptivo
-            contents.add(Map.of("type", "text", "text", "Transcribe de forma literal y organizada todo el texto de estos apuntes que ves en la imagen."));
-
-            // Imagen
-            contents.add(Map.of(
-                "type", "image_url",
-                "image_url", Map.of("url", urlImagen)
-            ));
+            contents.add(Map.of("type", "text", "text", "Extrae el texto de esta imagen de forma literal y organizada:"));
+            contents.add(Map.of("type", "image_url", "image_url", Map.of("url", urlImagen)));
 
             message.put("content", contents);
             messages.add(message);
@@ -87,13 +68,13 @@ public class IAService {
             return root.path("choices").get(0).path("message").path("content").asText();
 
         } catch (Exception e) {
-            System.err.println("Error en digitalizar: " + e.getMessage());
-            return "Error al digitalizar con OpenAI: " + e.getMessage();
+            System.err.println("Error en IA: " + e.getMessage());
+            return "Error: No se pudo procesar la imagen.";
         }
     }
 
     /**
-     * 2. Generar Resumen
+     * Genera un resumen y devuelve el texto (Sin guardar en Firebase)
      */
     public String generarResumenTexto(String textoApuntes) {
         try {
@@ -103,27 +84,21 @@ public class IAService {
 
             Map<String, Object> body = new HashMap<>();
             body.put("model", modeloIA);
-
-            List<Map<String, String>> messages = List.of(
-                Map.of("role", "system", "content", "Eres un experto en educación."),
-                Map.of("role", "user", "content", "Resume el siguiente contenido de forma clara y estructurada: \n\n" + textoApuntes)
-            );
-
-            body.put("messages", messages);
+            body.put("messages", List.of(
+                Map.of("role", "user", "content", "Resume de forma estructurada: \n\n" + textoApuntes)
+            ));
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
-
             JsonNode root = objectMapper.readTree(responseStr);
             return root.path("choices").get(0).path("message").path("content").asText();
-
         } catch (Exception e) {
-            return "Error al generar resumen: " + e.getMessage();
+            return "Error al generar resumen.";
         }
     }
 
     /**
-     * 3. Generar Test (JSON)
+     * Genera preguntas y devuelve la lista (Sin guardar en Firebase)
      */
     public List<Pregunta> generarPreguntasIA(String contenido) {
         try {
@@ -131,10 +106,9 @@ public class IAService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(apiKey);
 
-            String prompt = "Genera 5 preguntas de opción múltiple a partir del texto. " +
-                            "Devuelve SOLO un array JSON con este formato: " +
-                            "[{\"enunciado\": \"...\", \"opciones\": [\"...\", \"...\", \"...\"], \"respuestaCorrecta\": 0}]. " +
-                            "Contenido: " + contenido;
+            String prompt = "Genera 5 preguntas tipo test en JSON: " +
+                            "[{\"enunciado\": \"...\", \"opciones\": [\"...\"], \"respuestaCorrecta\": 0}]. " +
+                            "Texto: " + contenido;
 
             Map<String, Object> body = new HashMap<>();
             body.put("model", modeloIA);
@@ -144,95 +118,38 @@ public class IAService {
             String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
 
             JsonNode root = objectMapper.readTree(responseStr);
-            String jsonPreguntas = root.path("choices").get(0).path("message").path("content").asText();
-            
-            // Limpiar Markdown
-            jsonPreguntas = jsonPreguntas.replaceAll("```json", "").replaceAll("```", "").trim();
+            String jsonStr = root.path("choices").get(0).path("message").path("content").asText();
+            jsonStr = jsonStr.replaceAll("```json", "").replaceAll("```", "").trim();
 
-            return objectMapper.readValue(jsonPreguntas, 
+            return objectMapper.readValue(jsonStr, 
                    objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class));
-
         } catch (Exception e) {
-            System.err.println("Error generando test: " + e.getMessage());
             return new ArrayList<>();
         }
     }
 
-    // --- MÉTODOS DE FIREBASE ---
-
-    public void guardarEnFirebase(String titulo, String textoIA, String urlImagen, String userId, String categoria) {
+    /**
+     * UNICO METODO DE ESCRITURA: Guardar el apunte principal
+     */
+    public void guardarApunteFirebase(String titulo, String contenido, String url, String userId, String categoria) {
         try {
             DatabaseReference ref = FirebaseDatabase.getInstance().getReference("apuntes");
-            String apunteId = ref.push().getKey();
-
-            Apunte nuevoApunte = new Apunte();
-            nuevoApunte.setId(apunteId);
-            nuevoApunte.setTitulo(titulo);
-            nuevoApunte.setContenido(textoIA);
-            nuevoApunte.setUrl(urlImagen);
-            nuevoApunte.setUserId(userId);
-            nuevoApunte.setCategoria(categoria);
-            nuevoApunte.setFecha(LocalDateTime.now().toString());
-
-            ref.child(apunteId).setValueAsync(nuevoApunte);
-        } catch (Exception e) {
-            System.err.println("Error al guardar en Firebase: " + e.getMessage());
-        }
-    }
-
-    public List<Apunte> obtenerApuntesPorUsuario(String uid) {
-        CompletableFuture<List<Apunte>> promesaApuntes = new CompletableFuture<>();
-        Query query = FirebaseDatabase.getInstance().getReference("apuntes").orderByChild("userId").equalTo(uid);
-
-        query.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(DataSnapshot dataSnapshot) {
-                List<Apunte> lista = new ArrayList<>();
-                for (DataSnapshot ds : dataSnapshot.getChildren()) {
-                    Apunte apunte = ds.getValue(Apunte.class);
-                    lista.add(apunte);
-                }
-                promesaApuntes.complete(lista);
-            }
-            @Override
-            public void onCancelled(DatabaseError error) {
-                promesaApuntes.completeExceptionally(error.toException());
-            }
-        });
-
-        try {
-            return promesaApuntes.get();
-        } catch (Exception e) {
-            return new ArrayList<>();
-        }
-    }
-
-    public void eliminarDeFirebase(String id) {
-        try {
-            DatabaseReference ref = FirebaseDatabase.getInstance().getReference("apuntes").child(id);
-            ref.removeValueAsync().get();
-        } catch (InterruptedException | ExecutionException e) {
-            System.err.println("Error al eliminar: " + e.getMessage());
-        }
-    }
-
-    public void guardarResumenFirebase(Resumen resumen) {
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("resumenes").child(resumen.getUserId());
-        String id = ref.push().getKey();
-        resumen.setId(id);
-        resumen.setFecha(LocalDateTime.now().toString());
-        ref.child(id).setValueAsync(resumen);
-    }
-
-    public void guardarTestFirebase(Test test) {
-        try {
-            DatabaseReference ref = FirebaseDatabase.getInstance().getReference("tests");
             String id = ref.push().getKey();
-            test.setId(id);
-            test.setFecha(LocalDateTime.now().toString());
-            ref.child(id).setValueAsync(test).get(); 
+
+            Apunte apunte = new Apunte();
+            apunte.setId(id);
+            apunte.setTitulo(titulo);
+            apunte.setContenido(contenido);
+            apunte.setUrl(url);
+            apunte.setUserId(userId);
+            apunte.setCategoria(categoria);
+            apunte.setFecha(LocalDateTime.now().toString());
+
+            // Usamos get() para asegurar que Render no cierre la conexión antes de guardar
+            ref.child(id).setValueAsync(apunte).get();
+            System.out.println("Apunte guardado: " + id);
         } catch (Exception e) {
-            System.err.println("Error al guardar test: " + e.getMessage());
+            System.err.println("Error guardando apunte: " + e.getMessage());
         }
     }
 }

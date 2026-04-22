@@ -31,13 +31,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class IAService {
 
-    @Value("${ia.api.key}")
+    @Value("${IA_API_KEY:${ia.api.key}}")
     private String apiKey;
 
-    @Value("${ia.api.url}")
+    @Value("${IA_API_URL:${ia.api.url:https://api.openai.com/v1/chat/completions}}")
     private String urlApiIA;
 
-    @Value("${ia.model}")
+    @Value("${IA_MODEL:${ia.model:gpt-4o}}")
     private String modeloIA;
 
     private final RestTemplate restTemplate = new RestTemplate();
@@ -47,6 +47,11 @@ public class IAService {
      * 1. Digitalizar Imagen (Formato Multimodal OpenAI)
      */
     public String digitalizar(String urlImagen) {
+    	if (apiKey == null || apiKey.isEmpty()) {
+            return "Error: La API Key no se ha cargado correctamente desde las variables de entorno";
+        }
+        // Log para depurar (solo los primeros caracteres por seguridad)
+        System.out.println("Usando API Key: " + apiKey.substring(0, 8) + "...");
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);

@@ -20,37 +20,55 @@ public class ApunteController {
 
     @PostMapping("/digitalizar")
     public ResponseEntity<Map<String, String>> recibirImagen(@RequestBody Map<String, String> payload) {
-        // 1. Extraemos TODOS los datos que envía Angular
-        String url = payload.get("url");
+        // 1. Usamos nombres consistentes (Asegúrate que Android envíe "url")
+        String url = payload.get("url"); 
         String titulo = payload.get("titulo");
-        String userId = payload.get("userId"); // <--- Importante para la privacidad
+        String userId = payload.get("userId");
         String categoria = payload.get("categoria");
-        
-        // 2. Llamamos a la IA (con el nuevo formato multimodal que pusimos en el Service)
-        String textoExtraido = serviceIA.digitalizar(url);
-        
-        // 3. Guardamos en Firebase (He añadido userId y categoria)
-        if (!textoExtraido.startsWith("Error")) {
-            // NOTA: Asegúrate de actualizar la firma de este método en tu IAService para que acepte userId y categoria
-            serviceIA.guardarEnFirebase(titulo, textoExtraido, url, userId, categoria);
+        String dificultad = payload.get("dificultad");
+
+        // Validación básica para evitar NullPointer
+        if (url == null || url.isEmpty()) {
+            return ResponseEntity.badRequest().body(Collections.singletonMap("error", "La URL de la imagen es obligatoria"));
         }
-        
-        // 4. Devolvemos un JSON real. Esto evita el error "Unexpected token N" en Angular.
-        return ResponseEntity.ok(Collections.singletonMap("textoIA", textoExtraido));
+
+        try {
+            // 2. Llamamos a la IA
+            String textoExtraido = serviceIA.digitalizar(url);
+
+            if (textoExtraido == null || textoExtraido.startsWith("Error")) {
+                return ResponseEntity.status(500).body(Collections.singletonMap("error", "La IA no pudo procesar la imagen"));
+            }
+
+            // 3. Guardamos en Firebase
+            serviceIA.guardarEnFirebase(titulo, textoExtraido, url, userId, categoria);
+
+            // 4. Devolvemos respuesta exitosa
+            return ResponseEntity.ok(Collections.singletonMap("textoIA", textoExtraido));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Collections.singletonMap("error", e.getMessage()));
+        }
     }
-    
-    // Nueva ruta para cumplir con el requisito de "cada usuario ve lo suyo"
+
     @GetMapping("/usuario/{uid}")
-    public List<Apunte> listarApuntesPorUsuario(@PathVariable String uid) {
-        // Deberás filtrar en tu IAService por este UID
-        return serviceIA.obtenerApuntesPorUsuario(uid); 
+    public ResponseEntity<List<Apunte>> listarApuntesPorUsuario(@PathVariable String uid) {
+        try {
+            List<Apunte> apuntes = serviceIA.obtenerApuntesPorUsuario(uid);
+            // Si la lista es null, devolvemos lista vacía para evitar error 500
+            return ResponseEntity.ok(apuntes != null ? apuntes : Collections.emptyList());
+        } catch (Exception e) {
+            // Esto te ayudará a ver por qué fallaba antes en los logs
+            e.printStackTrace(); 
+            return ResponseEntity.status(500).build();
+        }
     }
-    
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminarApunte(@PathVariable String id) {
         try {
             serviceIA.eliminarDeFirebase(id);
-            return ResponseEntity.ok().build();
+            return ResponseEntity.noContent().build(); // 204 es más correcto para Delete
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }

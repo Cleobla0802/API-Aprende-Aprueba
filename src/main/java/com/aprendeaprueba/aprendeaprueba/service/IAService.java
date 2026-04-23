@@ -36,18 +36,21 @@ public class IAService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(apiKey);
+            // NVIDIA a veces requiere esta cabecera específica
             headers.set("Accept", "application/json");
 
             Map<String, Object> body = new HashMap<>();
-            body.put("model", modeloIA);
+            // IMPORTANTE: El modelo debe ser el ID técnico
+            body.put("model", "nvidia/nemotron-nano-12b-v2-vl");
             body.put("max_tokens", 1024);
+            body.put("temperature", 0.2); // Recomendado para OCR literal
 
             List<Map<String, Object>> messages = new ArrayList<>();
             Map<String, Object> message = new HashMap<>();
             message.put("role", "user");
 
             List<Map<String, Object>> contents = new ArrayList<>();
-            contents.add(Map.of("type", "text", "text", "Extrae el texto de esta imagen de forma literal y organizada:"));
+            contents.add(Map.of("type", "text", "text", "Extrae el texto de esta imagen de forma literal y estructurada:"));
             contents.add(Map.of("type", "image_url", "image_url", Map.of("url", urlImagen)));
 
             message.put("content", contents);
@@ -55,11 +58,15 @@ public class IAService {
             body.put("messages", messages);
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            
+            // Usamos la URL completa del endpoint del modelo
             String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
 
             JsonNode root = objectMapper.readTree(responseStr);
             return root.path("choices").get(0).path("message").path("content").asText();
         } catch (Exception e) {
+            // Esto te ayudará a ver en los logs de Render si es un 401 (llave mal) o 404 (url mal)
+            System.err.println("Error detallado: " + e.getMessage());
             return "Error al procesar con IA: " + e.getMessage();
         }
     }

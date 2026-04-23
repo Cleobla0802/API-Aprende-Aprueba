@@ -22,96 +22,109 @@ public class IAService {
     @Value("${IA_API_KEY:${ia.api.key}}")
     private String apiKey;
 
-    @Value("${IA_API_URL:${ia.api.url:https://ai.api.nvidia.com/v1/gr/nvidia/nemotron-nano-12b-v2-vl/chat/completions}}")
-    private String urlApiIA;
-
-    @Value("${IA_MODEL:${ia.model:nvidia/nemotron-nano-12b-v2-vl}}")
-    private String modeloIA;
+    // URL fija para OpenRouter
+    private final String urlOpenRouter = "https://openrouter.ai/api/v1/chat/completions";
+    
+    // Modelo gratuito de NVIDIA en OpenRouter
+    private final String modeloIA = "nvidia/nemotron-nano-12b-v2-vl:free";
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * Extrae texto de una imagen (OCR Multimodal)
+     */
     public String digitalizar(String urlImagen) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
-            // NVIDIA a veces requiere esta cabecera específica
-            headers.set("Accept", "application/json");
+            HttpEntity<Map<String, Object>> entity = crearEntidad(
+                "Extrae el texto de esta imagen de forma literal y organizada:", 
+                urlImagen
+            );
 
-            Map<String, Object> body = new HashMap<>();
-            // IMPORTANTE: El modelo debe ser el ID técnico
-            body.put("model", "nvidia/nemotron-nano-12b-v2-vl");
-            body.put("max_tokens", 1024);
-            body.put("temperature", 0.2); // Recomendado para OCR literal
-
-            List<Map<String, Object>> messages = new ArrayList<>();
-            Map<String, Object> message = new HashMap<>();
-            message.put("role", "user");
-
-            List<Map<String, Object>> contents = new ArrayList<>();
-            contents.add(Map.of("type", "text", "text", "Extrae el texto de esta imagen de forma literal y estructurada:"));
-            contents.add(Map.of("type", "image_url", "image_url", Map.of("url", urlImagen)));
-
-            message.put("content", contents);
-            messages.add(message);
-            body.put("messages", messages);
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-            
-            // Usamos la URL completa del endpoint del modelo
-            String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
-
-            JsonNode root = objectMapper.readTree(responseStr);
-            return root.path("choices").get(0).path("message").path("content").asText();
+            String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
+            return extraerContenido(responseStr);
         } catch (Exception e) {
-            // Esto te ayudará a ver en los logs de Render si es un 401 (llave mal) o 404 (url mal)
-            System.err.println("Error detallado: " + e.getMessage());
-            return "Error al procesar con IA: " + e.getMessage();
+            return "Error al digitalizar: " + e.getMessage();
         }
     }
 
+    /**
+     * Genera un resumen de un texto
+     */
     public String generarResumenTexto(String texto) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
+            HttpEntity<Map<String, Object>> entity = crearEntidad(
+                "Resume el siguiente contenido de forma clara y estructurada: " + texto, 
+                null
+            );
 
-            Map<String, Object> body = new HashMap<>();
-            body.put("model", modeloIA);
-            body.put("messages", List.of(Map.of("role", "user", "content", "Resume: " + texto)));
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-            String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
-            JsonNode root = objectMapper.readTree(responseStr);
-            return root.path("choices").get(0).path("message").path("content").asText();
+            String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
+            return extraerContenido(responseStr);
         } catch (Exception e) {
-            return "Error en resumen.";
+            return "Error al generar resumen: " + e.getMessage();
         }
     }
 
+    /**
+     * Genera una lista de preguntas tipo test
+     */
     public List<Pregunta> generarPreguntasIA(String contenido) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
+            String prompt = "Genera 5 preguntas tipo test basadas en el siguiente texto. " +
+                    "Responde ÚNICAMENTE con un JSON puro con este formato: " +
+                    "[{\"enunciado\": \"...\", \"opciones\": [\"...\"], \"respuestaCorrecta\": 0}]. " +
+                    "Texto: " + contenido;
 
-            String prompt = "Genera 5 preguntas JSON: [{\"enunciado\":\"...\",\"opciones\":[\"...\"],\"respuestaCorrecta\":0}]. Texto: " + contenido;
+            HttpEntity<Map<String, Object>> entity = crearEntidad(prompt, null);
+            String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
+            String jsonStr = extraerContenido(responseStr);
 
-            Map<String, Object> body = new HashMap<>();
-            body.put("model", modeloIA);
-            body.put("messages", List.of(Map.of("role", "user", "content", prompt)));
+            // Limpieza básica del JSON por si la IA añade bloques de código
+            jsonStr = jsonStr.replaceAll("```json", "").replaceAll("```", "").trim();
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-            String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
-
-            JsonNode root = objectMapper.readTree(responseStr);
-            String json = root.path("choices").get(0).path("message").path("content").asText();
-            json = json.replaceAll("```json", "").replaceAll("```", "").trim();
-
-            return objectMapper.readValue(json, objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class));
+            return objectMapper.readValue(jsonStr, 
+                   objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class));
         } catch (Exception e) {
             return new ArrayList<>();
         }
+    }
+
+    // --- MÉTODOS AUXILIARES PARA EVITAR REPETIR CÓDIGO ---
+
+    private HttpEntity<Map<String, Object>> crearEntidad(String prompt, String urlImagen) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey.trim());
+        // Cabeceras obligatorias para OpenRouter
+        headers.set("HTTP-Referer", "https://aprendeaprueba.render.com"); 
+        headers.set("X-Title", "AprendeAAprueba");
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", modeloIA);
+
+        List<Map<String, Object>> messages = new ArrayList<>();
+        Map<String, Object> message = new HashMap<>();
+        message.put("role", "user");
+
+        if (urlImagen != null) {
+            // Formato Multimodal para imágenes
+            List<Map<String, Object>> contents = new ArrayList<>();
+            contents.add(Map.of("type", "text", "text", prompt));
+            contents.add(Map.of("type", "image_url", "image_url", Map.of("url", urlImagen)));
+            message.put("content", contents);
+        } else {
+            // Formato solo texto
+            message.put("content", prompt);
+        }
+
+        messages.add(message);
+        body.put("messages", messages);
+
+        return new HttpEntity<>(body, headers);
+    }
+
+    private String extraerContenido(String responseStr) throws Exception {
+        JsonNode root = objectMapper.readTree(responseStr);
+        return root.path("choices").get(0).path("message").path("content").asText();
     }
 }

@@ -50,27 +50,4 @@ public class ApunteController {
             return ResponseEntity.status(500).body(Collections.singletonMap("error", e.getMessage()));
         }
     }
-
-    @GetMapping("/usuario/{uid}")
-    public ResponseEntity<List<Apunte>> listarApuntesPorUsuario(@PathVariable String uid) {
-        try {
-            List<Apunte> apuntes = serviceIA.obtenerApuntesPorUsuario(uid);
-            // Si la lista es null, devolvemos lista vacía para evitar error 500
-            return ResponseEntity.ok(apuntes != null ? apuntes : Collections.emptyList());
-        } catch (Exception e) {
-            // Esto te ayudará a ver por qué fallaba antes en los logs
-            e.printStackTrace(); 
-            return ResponseEntity.status(500).build();
-        }
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> eliminarApunte(@PathVariable String id) {
-        try {
-            serviceIA.eliminarDeFirebase(id);
-            return ResponseEntity.noContent().build(); // 204 es más correcto para Delete
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().build();
-        }
-    }
 }

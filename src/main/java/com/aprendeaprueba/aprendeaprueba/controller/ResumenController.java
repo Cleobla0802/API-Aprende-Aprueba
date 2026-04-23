@@ -26,17 +26,4 @@ public class ResumenController {
         String resultado = iaService.generarResumenTexto(contenido);
         return Map.of("resumen", resultado);
     }
-
-    // Endpoint para guardar el resumen final en Firebase
-    @PostMapping("/guardar")
-    public Map<String, String> guardar(@RequestBody Resumen resumen) {
-        try {
-            iaService.guardarResumenFirebase(resumen);
-            return Map.of("status", "success", "message", "Resumen guardado correctamente");
-        } catch (Exception e) {
-            return Map.of("status", "error", "message", e.getMessage());
-        }
-    }
-	
-	
 }

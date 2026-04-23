@@ -26,16 +26,13 @@ public class TestController {
         // 1. Generar preguntas con IA
         List<Pregunta> preguntas = iaService.generarPreguntasIA(contenido);
 
-        // 2. Crear objeto Test
+        // 2. Crear objeto Test (Se rellena pero NO se guarda desde aqui)
         Test nuevoTest = new Test();
         nuevoTest.setUserId(userId);
         nuevoTest.setTitulo("Test de " + titulo);
         nuevoTest.setCategoria(categoria);
         nuevoTest.setPreguntas(preguntas);
 
-        // 3. Guardar en Firebase
-        iaService.guardarTestFirebase(nuevoTest);
-
-        return nuevoTest;
+        return nuevoTest; // El frontend recibe el JSON y lo guarda en su Firebase
     }
 }

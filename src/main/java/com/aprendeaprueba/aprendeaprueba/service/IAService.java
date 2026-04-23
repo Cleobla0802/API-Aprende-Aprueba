@@ -23,20 +23,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class IAService {
 
-    @Value("${IA_API_KEY:${ia.api.key}}")
+    @Value("${IA_API_KEY}")
     private String apiKey;
 
-    @Value("${IA_API_URL:${ia.api.url:https://api.openai.com/v1/chat/completions}}")
+    @Value("${IA_API_URL}")
     private String urlApiIA;
 
-    @Value("${IA_MODEL:${ia.model:gpt-4o}}")
+    @Value("${IA_MODEL}")
     private String modeloIA;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * Procesa la imagen con la IA de NVIDIA/OpenAI
+     * UNICO PROCESO DE IA: Digitalizar
+     * Este se mantiene porque Android no puede procesar IA pesada.
      */
     public String digitalizar(String urlImagen) {
         try {
@@ -54,7 +55,7 @@ public class IAService {
             message.put("role", "user");
 
             List<Map<String, Object>> contents = new ArrayList<>();
-            contents.add(Map.of("type", "text", "text", "Extrae el texto de esta imagen de forma literal y organizada:"));
+            contents.add(Map.of("type", "text", "text", "Extrae el texto de esta imagen de forma literal:"));
             contents.add(Map.of("type", "image_url", "image_url", Map.of("url", urlImagen)));
 
             message.put("content", contents);
@@ -66,15 +67,38 @@ public class IAService {
 
             JsonNode root = objectMapper.readTree(responseStr);
             return root.path("choices").get(0).path("message").path("content").asText();
-
         } catch (Exception e) {
-            System.err.println("Error en IA: " + e.getMessage());
-            return "Error: No se pudo procesar la imagen.";
+            return "Error en proceso de IA: " + e.getMessage();
         }
     }
 
     /**
-     * Genera un resumen y devuelve el texto (Sin guardar en Firebase)
+     * UNICO METODO DE GUARDADO: Se mantiene para asegurar que el resultado 
+     * de la IA se guarde inmediatamente.
+     */
+    public void guardarEnFirebase(String titulo, String textoIA, String urlImagen, String userId, String categoria) {
+        try {
+            DatabaseReference ref = FirebaseDatabase.getInstance().getReference("apuntes");
+            String id = ref.push().getKey();
+
+            Apunte nuevoApunte = new Apunte();
+            nuevoApunte.setId(id);
+            nuevoApunte.setTitulo(titulo);
+            nuevoApunte.setContenido(textoIA);
+            nuevoApunte.setUrl(urlImagen);
+            nuevoApunte.setUserId(userId);
+            nuevoApunte.setCategoria(categoria);
+            nuevoApunte.setFecha(LocalDateTime.now().toString());
+
+            ref.child(id).setValueAsync(nuevoApunte).get();
+        } catch (Exception e) {
+            System.err.println("Error al guardar: " + e.getMessage());
+        }
+    }
+
+    /**
+     * IA PARA RESUMENES: Devuelve el texto a Android/Angular, 
+     * ellos deciden si guardarlo.
      */
     public String generarResumenTexto(String textoApuntes) {
         try {
@@ -84,9 +108,7 @@ public class IAService {
 
             Map<String, Object> body = new HashMap<>();
             body.put("model", modeloIA);
-            body.put("messages", List.of(
-                Map.of("role", "user", "content", "Resume de forma estructurada: \n\n" + textoApuntes)
-            ));
+            body.put("messages", List.of(Map.of("role", "user", "content", "Resume: " + textoApuntes)));
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
@@ -98,7 +120,8 @@ public class IAService {
     }
 
     /**
-     * Genera preguntas y devuelve la lista (Sin guardar en Firebase)
+     * IA PARA TESTS: Devuelve la lista a Android/Angular, 
+     * ellos deciden si guardarla.
      */
     public List<Pregunta> generarPreguntasIA(String contenido) {
         try {
@@ -106,9 +129,7 @@ public class IAService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(apiKey);
 
-            String prompt = "Genera 5 preguntas tipo test en JSON: " +
-                            "[{\"enunciado\": \"...\", \"opciones\": [\"...\"], \"respuestaCorrecta\": 0}]. " +
-                            "Texto: " + contenido;
+            String prompt = "Genera 5 preguntas JSON: [{\"enunciado\":\"...\",\"opciones\":[\"...\"],\"respuestaCorrecta\":0}]. Texto: " + contenido;
 
             Map<String, Object> body = new HashMap<>();
             body.put("model", modeloIA);
@@ -118,38 +139,12 @@ public class IAService {
             String responseStr = restTemplate.postForObject(urlApiIA, entity, String.class);
 
             JsonNode root = objectMapper.readTree(responseStr);
-            String jsonStr = root.path("choices").get(0).path("message").path("content").asText();
-            jsonStr = jsonStr.replaceAll("```json", "").replaceAll("```", "").trim();
+            String json = root.path("choices").get(0).path("message").path("content").asText();
+            json = json.replaceAll("```json", "").replaceAll("```", "").trim();
 
-            return objectMapper.readValue(jsonStr, 
-                   objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class));
+            return objectMapper.readValue(json, objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class));
         } catch (Exception e) {
             return new ArrayList<>();
-        }
-    }
-
-    /**
-     * UNICO METODO DE ESCRITURA: Guardar el apunte principal
-     */
-    public void guardarApunteFirebase(String titulo, String contenido, String url, String userId, String categoria) {
-        try {
-            DatabaseReference ref = FirebaseDatabase.getInstance().getReference("apuntes");
-            String id = ref.push().getKey();
-
-            Apunte apunte = new Apunte();
-            apunte.setId(id);
-            apunte.setTitulo(titulo);
-            apunte.setContenido(contenido);
-            apunte.setUrl(url);
-            apunte.setUserId(userId);
-            apunte.setCategoria(categoria);
-            apunte.setFecha(LocalDateTime.now().toString());
-
-            // Usamos get() para asegurar que Render no cierre la conexión antes de guardar
-            ref.child(id).setValueAsync(apunte).get();
-            System.out.println("Apunte guardado: " + id);
-        } catch (Exception e) {
-            System.err.println("Error guardando apunte: " + e.getMessage());
         }
     }
 }

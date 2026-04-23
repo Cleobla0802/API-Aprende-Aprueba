@@ -22,10 +22,10 @@ public class IAService {
     @Value("${IA_API_KEY:${ia.api.key}}")
     private String apiKey;
 
-    @Value("${IA_API_URL:${ia.api.url:https://integrate.api.nvidia.com/v1/chat/completions}}")
+    @Value("${IA_API_URL:${ia.api.url:https://ai.api.nvidia.com/v1/gr/nvidia/nemotron-nano-12b-v2-vl/chat/completions}}")
     private String urlApiIA;
 
-    @Value("${IA_MODEL:${ia.model:nvidia/nemotron-nano-12b-v2-vl:free}}")
+    @Value("${IA_MODEL:${ia.model:nvidia/nemotron-nano-12b-v2-vl}}")
     private String modeloIA;
 
     private final RestTemplate restTemplate = new RestTemplate();

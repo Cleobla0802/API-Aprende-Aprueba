@@ -37,7 +37,7 @@ public class IAService {
     public String digitalizar(String urlImagen) {
         try {
             HttpEntity<Map<String, Object>> entity = crearEntidad(
-                "Extrae el texto de esta imagen de forma literal y organizada:", 
+                "Extrae el texto de esta imagen de forma literal y organizada (en español de españa):", 
                 urlImagen
             );
 

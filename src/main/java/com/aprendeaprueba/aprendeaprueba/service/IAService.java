@@ -37,7 +37,7 @@ public class IAService {
     public String digitalizar(String urlImagen) {
         try {
             HttpEntity<Map<String, Object>> entity = crearEntidad(
-                "Extrae el texto de esta imagen de forma literal y organizada (en español de españa):", 
+                "Extrae el texto de esta imagen de forma literal y organizada, intenta poner texto completamente plano sin ningun tipo de añadido como por ejemplo * si hay tablas y cosas visuales ahi si que puedes adapatarlo tu, si ves cualquier cosa que no tenga sentido interpretarlo como un texto para estudiar algo no lo extraigas (en español de españa):", 
                 urlImagen
             );
 
@@ -54,7 +54,7 @@ public class IAService {
     public String generarResumenTexto(String texto) {
         try {
             HttpEntity<Map<String, Object>> entity = crearEntidad(
-                "Resume el siguiente contenido de forma clara y estructurada: " + texto, 
+                "Resume el siguiente contenido de forma clara y estructurada, intenta poner texto completamente plano sin ningun tipo de añadido como por ejemplo * si hay tablas y cosas visuales ahi si que puedes adapatarlo tu  (en español de españa): " + texto, 
                 null
             );
 
@@ -70,7 +70,7 @@ public class IAService {
      */
     public List<Pregunta> generarPreguntasIA(String contenido) {
         try {
-            String prompt = "Genera 5 preguntas tipo test basadas en el siguiente texto. " +
+            String prompt = "Genera 5 preguntas tipo test basadas en el siguiente texto (en español de españa). " +
                     "Responde ÚNICAMENTE con un JSON puro con este formato: " +
                     "[{\"enunciado\": \"...\", \"opciones\": [\"...\"], \"respuestaCorrecta\": 0}]. " +
                     "Texto: " + contenido;

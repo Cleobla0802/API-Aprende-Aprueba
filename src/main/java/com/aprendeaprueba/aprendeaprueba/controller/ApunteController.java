@@ -25,4 +25,7 @@ public class ApunteController {
         
         return ResponseEntity.ok(response);
     }
+    
+    @GetMapping("/ping")
+    public String ping() { return "ok"; }
 }

@@ -1,0 +1,15 @@
+name: Matener el backend despierto
+
+on:
+  schedule:
+    # Se ejecuta cada 14 minutos
+    - cron: '*/14 * * * *'
+  workflow_dispatch: # Esto es para que puedas probarlo dándole a un botón
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend URL
+        run: |
+          curl -I https://api-aprende-aprueba-1.onrender.com

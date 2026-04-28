@@ -26,7 +26,9 @@ public class IAService {
     private final String urlOpenRouter = "https://openrouter.ai/api/v1/chat/completions";
     
     // Modelo gratuito de NVIDIA en OpenRouter
-    private final String modeloIA = "nvidia/nemotron-nano-12b-v2-vl:free";
+    private final String modeloIA = "meta-llama/llama-3.2-3b-instruct:free";
+    
+    private final String modeloVision = "nvidia/nemotron-nano-12b-v2-vl:free";
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -95,25 +97,22 @@ public class IAService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey.trim());
-        // Cabeceras obligatorias para OpenRouter
-        headers.set("HTTP-Referer", "https://aprendeaprueba.render.com"); 
+        headers.set("HTTP-Referer", "https://aprendeaprueba.render.com");
         headers.set("X-Title", "AprendeAAprueba");
 
         Map<String, Object> body = new HashMap<>();
-        body.put("model", modeloIA);
+        body.put("model", urlImagen != null ? modeloVision : modeloIA);
 
         List<Map<String, Object>> messages = new ArrayList<>();
         Map<String, Object> message = new HashMap<>();
         message.put("role", "user");
 
         if (urlImagen != null) {
-            // Formato Multimodal para imágenes
             List<Map<String, Object>> contents = new ArrayList<>();
             contents.add(Map.of("type", "text", "text", prompt));
             contents.add(Map.of("type", "image_url", "image_url", Map.of("url", urlImagen)));
             message.put("content", contents);
         } else {
-            // Formato solo texto
             message.put("content", prompt);
         }
 

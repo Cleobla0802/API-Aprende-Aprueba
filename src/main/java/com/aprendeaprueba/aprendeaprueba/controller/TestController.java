@@ -22,17 +22,20 @@ public class TestController {
         String userId = request.get("userId");
         String titulo = request.get("titulo");
         String categoria = request.get("categoria");
+        int cantidadPreguntas = 10;
+        try {
+            cantidadPreguntas = Integer.parseInt(request.get("cantidadPreguntas"));
+            if (cantidadPreguntas < 1) cantidadPreguntas = 1;
+            if (cantidadPreguntas > 30) cantidadPreguntas = 30;
+        } catch (Exception ignored) {}
 
-        // 1. Generar preguntas con IA
-        List<Pregunta> preguntas = iaService.generarPreguntasIA(contenido);
+        List<Pregunta> preguntas = iaService.generarPreguntasIA(contenido, cantidadPreguntas);
 
-        // 2. Crear objeto Test (Se rellena pero NO se guarda desde aqui)
         Test nuevoTest = new Test();
         nuevoTest.setUserId(userId);
         nuevoTest.setTitulo("Test de " + titulo);
         nuevoTest.setCategoria(categoria);
         nuevoTest.setPreguntas(preguntas);
-
-        return nuevoTest; // El frontend recibe el JSON y lo guarda en su Firebase
+        return nuevoTest;
     }
 }

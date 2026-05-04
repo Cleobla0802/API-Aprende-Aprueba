@@ -68,9 +68,9 @@ public class IAService {
     /**
      * Genera una lista de preguntas tipo test
      */
-    public List<Pregunta> generarPreguntasIA(String contenido) {
+    public List<Pregunta> generarPreguntasIA(String contenido, int cantidadPreguntas) {
         try {
-            String prompt = "Genera 5 preguntas tipo test basadas en el siguiente texto (en español de españa). " +
+            String prompt = "Genera " + cantidadPreguntas + " preguntas tipo test basadas en el siguiente texto (en español de españa). " +
                     "Responde ÚNICAMENTE con un JSON puro con este formato: " +
                     "[{\"enunciado\": \"...\", \"opciones\": [\"...\"], \"respuestaCorrecta\": 0}]. " +
                     "Texto: " + contenido;
@@ -79,10 +79,9 @@ public class IAService {
             String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
             String jsonStr = extraerContenido(responseStr);
 
-            // Limpieza básica del JSON por si la IA añade bloques de código
             jsonStr = jsonStr.replaceAll("```json", "").replaceAll("```", "").trim();
 
-            return objectMapper.readValue(jsonStr, 
+            return objectMapper.readValue(jsonStr,
                    objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class));
         } catch (Exception e) {
             return new ArrayList<>();

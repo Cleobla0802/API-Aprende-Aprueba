@@ -70,9 +70,11 @@ public class IAService {
      */
     public List<Pregunta> generarPreguntasIA(String contenido, int cantidadPreguntas) {
         try {
-            String prompt = "Genera " + cantidadPreguntas + " preguntas tipo test basadas en el siguiente texto (en español de españa). " +
+            String prompt = "Genera EXACTAMENTE " + cantidadPreguntas + " preguntas tipo test basadas en el siguiente texto (en español de España). " +
+                    "No generes más ni menos preguntas. " +
+                    "Cada pregunta debe tener 4 opciones. " +
                     "Responde ÚNICAMENTE con un JSON puro con este formato: " +
-                    "[{\"enunciado\": \"...\", \"opciones\": [\"...\"], \"respuestaCorrecta\": 0}]. " +
+                    "[{\"enunciado\": \"...\", \"opciones\": [\"...\", \"...\", \"...\", \"...\"], \"respuestaCorrecta\": 0}]. " +
                     "Texto: " + contenido;
 
             HttpEntity<Map<String, Object>> entity = crearEntidad(prompt, null);
@@ -81,12 +83,21 @@ public class IAService {
 
             jsonStr = jsonStr.replaceAll("```json", "").replaceAll("```", "").trim();
 
-            return objectMapper.readValue(jsonStr,
-                   objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class));
+            List<Pregunta> preguntas = objectMapper.readValue(
+                jsonStr,
+                objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class)
+            );
+
+            if (preguntas.size() > cantidadPreguntas) {
+                return preguntas.subList(0, cantidadPreguntas);
+            }
+
+            return preguntas;
         } catch (Exception e) {
             return new ArrayList<>();
         }
     }
+
 
     // --- MÉTODOS AUXILIARES PARA EVITAR REPETIR CÓDIGO ---
 

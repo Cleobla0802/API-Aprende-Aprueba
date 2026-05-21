@@ -69,65 +69,45 @@ public class IAService {
      * Genera una lista de preguntas tipo test
      */
     public List<Pregunta> generarPreguntasIA(String contenido, int cantidadPreguntas) {
-        try {
-            String prompt = """
-                Genera EXACTAMENTE %d preguntas tipo test basadas en el texto.
-                Responde SOLO con JSON válido, sin markdown, sin explicación.
-                Formato obligatorio:
-                {
-                  "preguntas": [
-                    {
-                      "enunciado": "...",
-                      "opciones": ["...", "...", "...", "..."],
-                      "respuestaCorrecta": 0
-                    }
-                  ]
+        Exception ultimoError = null;
+
+        for (int intento = 1; intento <= 2; intento++) {
+            try {
+                String prompt = construirPromptPreguntas(contenido, cantidadPreguntas, intento);
+                HttpEntity<Map<String, Object>> entity = crearEntidad(prompt, null);
+
+                String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
+                String respuestaIA = extraerContenido(responseStr);
+                String jsonStr = extraerJson(respuestaIA);
+
+                JsonNode root = objectMapper.readTree(jsonStr);
+                JsonNode preguntasNode = root.isArray() ? root : root.path("preguntas");
+
+                List<Pregunta> preguntas = objectMapper.convertValue(
+                    preguntasNode,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class)
+                );
+
+                preguntas = preguntas.stream()
+                    .filter(p -> p.getEnunciado() != null && !p.getEnunciado().isBlank())
+                    .filter(p -> p.getOpciones() != null && p.getOpciones().size() == 4)
+                    .filter(p -> p.getRespuestaCorrecta() >= 0 && p.getRespuestaCorrecta() <= 3)
+                    .limit(cantidadPreguntas)
+                    .toList();
+
+                if (!preguntas.isEmpty()) {
+                    return preguntas;
                 }
 
-                Reglas:
-                - Debe haber exactamente %d preguntas.
-                - Cada pregunta debe tener exactamente 4 opciones.
-                - respuestaCorrecta debe ser un número entre 0 y 3.
-                - Todo en español de España.
-
-                Texto:
-                %s
-                """.formatted(cantidadPreguntas, cantidadPreguntas, contenido);
-
-            HttpEntity<Map<String, Object>> entity = crearEntidad(prompt, null);
-            String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
-            String jsonStr = extraerContenido(responseStr);
-
-            jsonStr = limpiarJson(jsonStr);
-
-            JsonNode root = objectMapper.readTree(jsonStr);
-            JsonNode preguntasNode = root.isArray() ? root : root.path("preguntas");
-
-            if (!preguntasNode.isArray()) {
-                throw new RuntimeException("La IA no devolvió un array de preguntas: " + jsonStr);
+                throw new RuntimeException("La IA devolvió 0 preguntas válidas");
+            } catch (Exception e) {
+                ultimoError = e;
             }
-
-            List<Pregunta> preguntas = objectMapper.convertValue(
-                preguntasNode,
-                objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class)
-            );
-
-            preguntas = preguntas.stream()
-                .filter(p -> p.getEnunciado() != null)
-                .filter(p -> p.getOpciones() != null && p.getOpciones().size() == 4)
-                .filter(p -> p.getRespuestaCorrecta() >= 0 && p.getRespuestaCorrecta() <= 3)
-                .limit(cantidadPreguntas)
-                .toList();
-
-            if (preguntas.isEmpty()) {
-                throw new RuntimeException("La IA devolvió 0 preguntas válidas. Respuesta: " + jsonStr);
-            }
-
-            return preguntas;
-        } catch (Exception e) {
-            throw new RuntimeException("Error generando preguntas con IA: " + e.getMessage(), e);
         }
+
+        throw new RuntimeException("No se pudieron generar preguntas con IA", ultimoError);
     }
+
 
     private String limpiarJson(String texto) {
         return texto
@@ -168,6 +148,7 @@ public class IAService {
 
         messages.add(message);
         body.put("messages", messages);
+        body.put("temperature", 0.2);
 
         return new HttpEntity<>(body, headers);
     }
@@ -176,4 +157,54 @@ public class IAService {
         JsonNode root = objectMapper.readTree(responseStr);
         return root.path("choices").get(0).path("message").path("content").asText();
     }
+    
+    private String construirPromptPreguntas(String contenido, int cantidadPreguntas, int intento) {
+        return """
+            Devuelve SOLO JSON válido. No escribas explicaciones, markdown ni texto adicional.
+
+            Formato exacto:
+            {
+              "preguntas": [
+                {
+                  "enunciado": "texto",
+                  "opciones": ["opción A", "opción B", "opción C", "opción D"],
+                  "respuestaCorrecta": 0
+                }
+              ]
+            }
+
+            Reglas obligatorias:
+            - Genera exactamente %d preguntas.
+            - Cada pregunta debe tener exactamente 4 opciones.
+            - respuestaCorrecta debe ser un número entre 0 y 3.
+            - Todo debe estar en español de España.
+            - Basa las preguntas únicamente en el texto.
+
+            Texto:
+            %s
+            """.formatted(cantidadPreguntas, contenido);
+    }
+    
+    private String extraerJson(String texto) {
+        String limpio = texto
+            .replace("```json", "")
+            .replace("```", "")
+            .trim();
+
+        int inicioObjeto = limpio.indexOf("{");
+        int finObjeto = limpio.lastIndexOf("}");
+
+        if (inicioObjeto >= 0 && finObjeto > inicioObjeto) {
+            return limpio.substring(inicioObjeto, finObjeto + 1);
+        }
+
+        int inicioArray = limpio.indexOf("[");
+        int finArray = limpio.lastIndexOf("]");
+
+        if (inicioArray >= 0 && finArray > inicioArray) {
+            return limpio.substring(inicioArray, finArray + 1);
+        }
+
+        return limpio;
+    }    
 }

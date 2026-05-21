@@ -70,33 +70,72 @@ public class IAService {
      */
     public List<Pregunta> generarPreguntasIA(String contenido, int cantidadPreguntas) {
         try {
-            String prompt = "Genera EXACTAMENTE " + cantidadPreguntas + " preguntas tipo test basadas en el siguiente texto (en español de España). " +
-                    "No generes más ni menos preguntas. " +
-                    "Cada pregunta debe tener 4 opciones. " +
-                    "Responde ÚNICAMENTE con un JSON puro con este formato: " +
-                    "[{\"enunciado\": \"...\", \"opciones\": [\"...\", \"...\", \"...\", \"...\"], \"respuestaCorrecta\": 0}]. " +
-                    "Texto: " + contenido;
+            String prompt = """
+                Genera EXACTAMENTE %d preguntas tipo test basadas en el texto.
+                Responde SOLO con JSON válido, sin markdown, sin explicación.
+                Formato obligatorio:
+                {
+                  "preguntas": [
+                    {
+                      "enunciado": "...",
+                      "opciones": ["...", "...", "...", "..."],
+                      "respuestaCorrecta": 0
+                    }
+                  ]
+                }
+
+                Reglas:
+                - Debe haber exactamente %d preguntas.
+                - Cada pregunta debe tener exactamente 4 opciones.
+                - respuestaCorrecta debe ser un número entre 0 y 3.
+                - Todo en español de España.
+
+                Texto:
+                %s
+                """.formatted(cantidadPreguntas, cantidadPreguntas, contenido);
 
             HttpEntity<Map<String, Object>> entity = crearEntidad(prompt, null);
             String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
             String jsonStr = extraerContenido(responseStr);
 
-            jsonStr = jsonStr.replaceAll("```json", "").replaceAll("```", "").trim();
+            jsonStr = limpiarJson(jsonStr);
 
-            List<Pregunta> preguntas = objectMapper.readValue(
-                jsonStr,
+            JsonNode root = objectMapper.readTree(jsonStr);
+            JsonNode preguntasNode = root.isArray() ? root : root.path("preguntas");
+
+            if (!preguntasNode.isArray()) {
+                throw new RuntimeException("La IA no devolvió un array de preguntas: " + jsonStr);
+            }
+
+            List<Pregunta> preguntas = objectMapper.convertValue(
+                preguntasNode,
                 objectMapper.getTypeFactory().constructCollectionType(List.class, Pregunta.class)
             );
 
-            if (preguntas.size() > cantidadPreguntas) {
-                return preguntas.subList(0, cantidadPreguntas);
+            preguntas = preguntas.stream()
+                .filter(p -> p.getEnunciado() != null)
+                .filter(p -> p.getOpciones() != null && p.getOpciones().size() == 4)
+                .filter(p -> p.getRespuestaCorrecta() >= 0 && p.getRespuestaCorrecta() <= 3)
+                .limit(cantidadPreguntas)
+                .toList();
+
+            if (preguntas.isEmpty()) {
+                throw new RuntimeException("La IA devolvió 0 preguntas válidas. Respuesta: " + jsonStr);
             }
 
             return preguntas;
         } catch (Exception e) {
-            return new ArrayList<>();
+            throw new RuntimeException("Error generando preguntas con IA: " + e.getMessage(), e);
         }
     }
+
+    private String limpiarJson(String texto) {
+        return texto
+            .replace("```json", "")
+            .replace("```", "")
+            .trim();
+    }
+
 
 
     // --- MÉTODOS AUXILIARES PARA EVITAR REPETIR CÓDIGO ---

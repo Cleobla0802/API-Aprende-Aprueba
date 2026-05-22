@@ -1,5 +1,6 @@
 package com.aprendeaprueba.aprendeaprueba.service;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -22,23 +24,37 @@ public class IAService {
     @Value("${IA_API_KEY:${ia.api.key}}")
     private String apiKey;
 
-    // URL fija para OpenRouter
-    private final String urlOpenRouter = "https://openrouter.ai/api/v1/chat/completions";
-    
-    // Modelo gratuito de NVIDIA en OpenRouter
-    private final String modeloIA = "nvidia/nemotron-nano-12b-v2-vl:free";
+    @Value("${ia.api.url:https://openrouter.ai/api/v1/chat/completions}")
+    private String urlOpenRouter;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Value("${ia.model.vision:nvidia/nemotron-nano-12b-v2-vl:free}")
+    private String modeloVision;
+
+    @Value("${ia.model.texto:nvidia/nemotron-nano-12b-v2-vl:free}")
+    private String modeloTexto;
+
+    @Value("${ia.limite.resumen:8000}")
+    private int limiteResumen;
+
+    @Value("${ia.limite.test:7000}")
+    private int limiteTest;
+
+    @Value("${ia.max-tokens.resumen:1800}")
+    private int maxTokensResumen;
+
+    private final RestTemplate restTemplate = crearRestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * Extrae texto de una imagen (OCR Multimodal)
+     * Extrae texto de una imagen. urlImagen puede ser una URL publica o un data URL base64.
      */
     public String digitalizar(String urlImagen) {
         try {
             HttpEntity<Map<String, Object>> entity = crearEntidad(
-                "Extrae el texto de esta imagen de forma literal y organizada, intenta poner texto completamente plano y ademas de eso bien formado, solamente extrae lo que creas que es texto relacionado con estudiar si ves texto de alguna marca ignoralo (en español de españa):", 
-                urlImagen
+                "Extrae solo el texto util para estudiar. Devuelve texto plano, claro y ordenado en espanol de Espana. Ignora marcas de agua, menus o texto no academico.",
+                urlImagen,
+                modeloVision,
+                2500
             );
 
             String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
@@ -49,13 +65,16 @@ public class IAService {
     }
 
     /**
-     * Genera un resumen de un texto
+     * Genera un resumen de un texto.
      */
     public String generarResumenTexto(String texto) {
         try {
+            String textoLimpio = prepararTexto(texto, limiteResumen);
             HttpEntity<Map<String, Object>> entity = crearEntidad(
-                "Resume el siguiente contenido de forma clara y estructurada, intenta poner texto completamente plano sin ningun tipo de añadido (en español de españa): " + texto, 
-                null
+                "Resume en espanol de Espana, con texto plano, claro y estructurado. No anadas introducciones ni despedidas.\n\nTexto:\n" + textoLimpio,
+                null,
+                modeloTexto,
+                maxTokensResumen
             );
 
             String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
@@ -66,15 +85,22 @@ public class IAService {
     }
 
     /**
-     * Genera una lista de preguntas tipo test
+     * Genera una lista de preguntas tipo test.
      */
     public List<Pregunta> generarPreguntasIA(String contenido, int cantidadPreguntas) {
         Exception ultimoError = null;
+        String contenidoLimpio = prepararTexto(contenido, limiteTest);
+        int cantidad = Math.max(1, Math.min(cantidadPreguntas, 15));
 
         for (int intento = 1; intento <= 2; intento++) {
             try {
-                String prompt = construirPromptPreguntas(contenido, cantidadPreguntas, intento);
-                HttpEntity<Map<String, Object>> entity = crearEntidad(prompt, null);
+                String prompt = construirPromptPreguntas(contenidoLimpio, cantidad, intento);
+                HttpEntity<Map<String, Object>> entity = crearEntidad(
+                    prompt,
+                    null,
+                    modeloTexto,
+                    calcularMaxTokensPreguntas(cantidad)
+                );
 
                 String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
                 String respuestaIA = extraerContenido(responseStr);
@@ -92,14 +118,14 @@ public class IAService {
                     .filter(p -> p.getEnunciado() != null && !p.getEnunciado().isBlank())
                     .filter(p -> p.getOpciones() != null && p.getOpciones().size() == 4)
                     .filter(p -> p.getRespuestaCorrecta() >= 0 && p.getRespuestaCorrecta() <= 3)
-                    .limit(cantidadPreguntas)
+                    .limit(cantidad)
                     .toList();
 
                 if (!preguntas.isEmpty()) {
                     return preguntas;
                 }
 
-                throw new RuntimeException("La IA devolvió 0 preguntas válidas");
+                throw new RuntimeException("La IA devolvio 0 preguntas validas");
             } catch (Exception e) {
                 ultimoError = e;
             }
@@ -108,83 +134,72 @@ public class IAService {
         throw new RuntimeException("No se pudieron generar preguntas con IA", ultimoError);
     }
 
-
-    private String limpiarJson(String texto) {
-        return texto
-            .replace("```json", "")
-            .replace("```", "")
-            .trim();
-    }
-
-
-
-    // --- MÉTODOS AUXILIARES PARA EVITAR REPETIR CÓDIGO ---
-
-    private HttpEntity<Map<String, Object>> crearEntidad(String prompt, String urlImagen) {
+    private HttpEntity<Map<String, Object>> crearEntidad(String prompt, String urlImagen, String modelo, int maxTokens) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey.trim());
-        // Cabeceras obligatorias para OpenRouter
-        headers.set("HTTP-Referer", "https://aprendeaprueba.render.com"); 
+        headers.set("HTTP-Referer", "https://aprendeaprueba.render.com");
         headers.set("X-Title", "AprendeAAprueba");
 
         Map<String, Object> body = new HashMap<>();
-        body.put("model", modeloIA);
+        body.put("model", modelo);
 
         List<Map<String, Object>> messages = new ArrayList<>();
         Map<String, Object> message = new HashMap<>();
         message.put("role", "user");
 
         if (urlImagen != null) {
-            // Formato Multimodal para imágenes
             List<Map<String, Object>> contents = new ArrayList<>();
             contents.add(Map.of("type", "text", "text", prompt));
             contents.add(Map.of("type", "image_url", "image_url", Map.of("url", urlImagen)));
             message.put("content", contents);
         } else {
-            // Formato solo texto
             message.put("content", prompt);
         }
 
         messages.add(message);
         body.put("messages", messages);
         body.put("temperature", 0.2);
+        body.put("max_tokens", maxTokens);
 
         return new HttpEntity<>(body, headers);
     }
 
     private String extraerContenido(String responseStr) throws Exception {
         JsonNode root = objectMapper.readTree(responseStr);
-        return root.path("choices").get(0).path("message").path("content").asText();
+        JsonNode errorNode = root.path("error");
+        if (!errorNode.isMissingNode() && !errorNode.isNull()) {
+            throw new RuntimeException(errorNode.path("message").asText("Error devuelto por la IA"));
+        }
+
+        JsonNode choices = root.path("choices");
+        if (!choices.isArray() || choices.isEmpty()) {
+            throw new RuntimeException("La IA no devolvio ninguna respuesta");
+        }
+
+        return choices.get(0).path("message").path("content").asText();
     }
-    
+
     private String construirPromptPreguntas(String contenido, int cantidadPreguntas, int intento) {
+        String reglaExtra = intento == 1
+            ? ""
+            : "- Si dudas, simplifica las preguntas y evita texto largo.\n";
+
         return """
-            Devuelve SOLO JSON válido. No escribas explicaciones, markdown ni texto adicional.
-
-            Formato exacto:
-            {
-              "preguntas": [
-                {
-                  "enunciado": "texto",
-                  "opciones": ["opción A", "opción B", "opción C", "opción D"],
-                  "respuestaCorrecta": 0
-                }
-              ]
-            }
-
-            Reglas obligatorias:
-            - Genera exactamente %d preguntas.
-            - Cada pregunta debe tener exactamente 4 opciones.
-            - respuestaCorrecta debe ser un número entre 0 y 3.
-            - Todo debe estar en español de España.
-            - Basa las preguntas únicamente en el texto.
-
+            Devuelve solo JSON valido, sin markdown ni explicaciones.
+            Forma exacta: {"preguntas":[{"enunciado":"","opciones":["","","",""],"respuestaCorrecta":0}]}
+            Reglas:
+            - Exactamente %d preguntas.
+            - Exactamente 4 opciones por pregunta.
+            - respuestaCorrecta debe ser 0, 1, 2 o 3.
+            - Espanol de Espana.
+            - Usa solo el texto.
+            %s
             Texto:
             %s
-            """.formatted(cantidadPreguntas, contenido);
+            """.formatted(cantidadPreguntas, reglaExtra, contenido);
     }
-    
+
     private String extraerJson(String texto) {
         String limpio = texto
             .replace("```json", "")
@@ -206,5 +221,28 @@ public class IAService {
         }
 
         return limpio;
-    }    
+    }
+
+    private String prepararTexto(String texto, int limite) {
+        if (texto == null) return "";
+
+        String limpio = texto
+            .replaceAll("\\s+", " ")
+            .trim();
+
+        return limpio.substring(0, Math.min(limpio.length(), limite));
+    }
+
+    private int calcularMaxTokensPreguntas(int cantidad) {
+        if (cantidad <= 5) return 1200;
+        if (cantidad <= 10) return 2200;
+        return 3200;
+    }
+
+    private RestTemplate crearRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(10));
+        factory.setReadTimeout(Duration.ofSeconds(65));
+        return new RestTemplate(factory);
+    }
 }

@@ -12,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
 import com.aprendeaprueba.aprendeaprueba.model.Pregunta;
@@ -60,7 +61,7 @@ public class IAService {
             String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
             return extraerContenido(responseStr);
         } catch (Exception e) {
-            return "Error al digitalizar: " + e.getMessage();
+            throw new RuntimeException("Error al digitalizar: " + describirError(e), e);
         }
     }
 
@@ -80,7 +81,7 @@ public class IAService {
             String responseStr = restTemplate.postForObject(urlOpenRouter, entity, String.class);
             return extraerContenido(responseStr);
         } catch (Exception e) {
-            return "Error al generar resumen: " + e.getMessage();
+            throw new RuntimeException("Error al generar resumen: " + describirError(e), e);
         }
     }
 
@@ -135,6 +136,10 @@ public class IAService {
     }
 
     private HttpEntity<Map<String, Object>> crearEntidad(String prompt, String urlImagen, String modelo, int maxTokens) {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("Falta configurar IA_API_KEY");
+        }
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey.trim());
@@ -178,6 +183,43 @@ public class IAService {
         }
 
         return choices.get(0).path("message").path("content").asText();
+    }
+
+    private String describirError(Exception e) {
+        if (e instanceof RestClientResponseException restError) {
+            String body = restError.getResponseBodyAsString();
+            String mensaje = extraerMensajeError(body);
+            if (!mensaje.isBlank()) {
+                return restError.getStatusCode() + " - " + mensaje;
+            }
+            return restError.getStatusCode().toString();
+        }
+
+        return e.getMessage() == null ? "Error desconocido" : e.getMessage();
+    }
+
+    private String extraerMensajeError(String body) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode error = root.path("error");
+            if (error.isTextual()) {
+                return error.asText();
+            }
+            if (!error.isMissingNode() && !error.isNull()) {
+                String message = error.path("message").asText("");
+                if (!message.isBlank()) {
+                    return message;
+                }
+            }
+            String message = root.path("message").asText("");
+            return message.isBlank() ? body : message;
+        } catch (Exception ignored) {
+            return body;
+        }
     }
 
     private String construirPromptPreguntas(String contenido, int cantidadPreguntas, int intento) {

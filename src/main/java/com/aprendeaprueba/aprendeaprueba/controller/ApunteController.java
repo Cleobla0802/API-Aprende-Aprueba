@@ -30,13 +30,17 @@ public class ApunteController {
 
     @PostMapping("/digitalizar")
     public ResponseEntity<Map<String, String>> digitalizar(@RequestBody Map<String, String> request) {
-        String url = request.get("url");
-        String textoIA = serviceIA.digitalizar(url);
+        try {
+            String url = request.get("url");
+            String textoIA = serviceIA.digitalizar(url);
 
-        Map<String, String> response = new HashMap<>();
-        response.put("textoIA", textoIA);
+            Map<String, String> response = new HashMap<>();
+            response.put("textoIA", textoIA);
 
-        return ResponseEntity.ok(response);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage(), e);
+        }
     }
 
     @PostMapping(
@@ -65,6 +69,8 @@ public class ApunteController {
             return ResponseEntity.ok(textoIA);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se pudo leer la imagen", e);
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage(), e);
         }
     }
 
